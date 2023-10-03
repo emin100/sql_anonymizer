@@ -1,4 +1,9 @@
 /target
 *.log
 *.txt
+
 .idea
+.DS_Store
+.vscode
+
+Cargo.lock
