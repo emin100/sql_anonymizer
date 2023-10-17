@@ -1,26 +1,7 @@
-use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 use elasticsearch::http::Url;
 use log::LevelFilter;
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Client {
-    /// Turn debugging information on
-    #[arg(short, long, default_value="error", global=true)]
-    pub log_level: LevelFilter,
-
-    /// Commands
-    #[command(subcommand)]
-    pub command: Commands,
-}
-
-#[derive(Subcommand)]
-pub enum Commands {
-    /// Adds files to myapp
-    Send(AddArgs),
-}
-
+use std::path::PathBuf;
 
 #[derive(Args,Debug)]
 pub struct AddArgs {
@@ -47,28 +28,58 @@ pub struct AddArgs {
     #[clap(value_enum)]
     pub input: Input,
 
-    /// Sets a custom config file
+    /// Sets a input file path
     #[arg(short = 'f', long, value_name = "FILE", required_if_eq_any([("input", "general"), ("input", "slow")]))]
     pub input_file: Option<PathBuf>,
 
-    /// Sets a custom config file
+    /// Sets a output file path
     #[arg(short = 'o', long, value_name = "FILE", required_if_eq("output", "file"), default_value="output.txt")]
     pub output_file: Option<PathBuf>,
+
+    /// Sets a push size
+    #[arg(short='s', long, default_value = "1000")]
+    pub elastic_push_size: u16,
+
+    /// Sets a push seconds
+    #[arg(short='c', long, default_value = "15")]
+    pub elastic_push_seconds: u16,
+
+    /// Sets Elastic password.
+    #[arg(short='n', long, default_value = "mysql_logs", env = "ELASTIC_INDEX")]
+    pub elastic_index_name: Option<String>,
+
+
 
 }
 
 
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum Output {
-    File,
-    Elastic
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Client {
+    /// Turn debugging information on
+    #[arg(short, long, default_value="error", global=true)]
+    pub log_level: LevelFilter,
+
+    /// Commands
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    Send(AddArgs),
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum Input {
     Slow,
-    General,
-    Syslog
+    General
+}
+
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
+pub enum Output {
+    File,
+    Elastic
 }
 
 

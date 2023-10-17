@@ -190,6 +190,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-targets",
 ]
@@ -1266,7 +1267,9 @@ dependencies = [
  "hostname",
  "local-ip-address",
  "log",
+ "regex",
  "retry",
+ "serde",
  "serde_json",
  "sqlparser",
  "tokio",

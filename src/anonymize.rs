@@ -1,239 +1,151 @@
-use sqlparser::ast::{Expr, Query, Select, SetExpr, Statement, Value, Values, Offset, OrderByExpr, Function, FunctionArg, FunctionArgExpr};
-use log::{debug};
 
-fn selection_changer(selection: Option<Expr>) -> Option<Expr> {
+use sqlparser::ast::{Expr, Query, Select, SetExpr, Statement, Offset, Value, FunctionArg};
+use log::{debug};
+use sqlparser::ast::FunctionArgExpr::Expr as OtherExpr;
+use crate::parser::Command;
+
+
+fn selection_changer(selection: &mut Expr) -> &mut Expr {
     debug!("Selection Changer: {:?}", selection);
     match selection {
-        Some(Expr::BinaryOp { left, op, right }) => {
-            Some(Expr::BinaryOp {
-                left: selection_changer(Some(*left)).map(Box::new).unwrap(),
-                op,
-                right: selection_changer(Some(*right)).map(Box::new).unwrap(),
-            })
+        Expr::BinaryOp { left, right, .. } => {
+            *left = Box::new(selection_changer(left).to_owned());
+            *right= Box::new(selection_changer(right).to_owned());
+        },
+        Expr::Like {  pattern, .. } => {
+            *pattern = Box::new(selection_changer(pattern).to_owned());
         }
-        Some(Expr::Like { negated, expr, pattern, escape_char }) => {
-            Some(Expr::Like {
-                negated,
-                expr,
-                pattern: selection_changer(Some(*pattern)).map(Box::new).unwrap(),
-                escape_char,
-            })
+       Expr::Value(value) => {
+            *value = Value::Placeholder("?".to_string());
         }
-        Some(Expr::Value(_value)) => {
-            Some(Expr::Value(Value::Placeholder("?".to_string())))
+        Expr::InList { list , .. } => {
+            *list = vec![Expr::Value(Value::Placeholder("?".to_string()))];
         }
-        Some(Expr::InList { expr, list: _, negated }) => {
-            Some(Expr::InList {
-                expr,
-                list: vec![Expr::Value(Value::Placeholder("?".to_string()))],
-                negated,
-            })
+        Expr::Between { low, high, .. } => {
+            *low = Box::new(selection_changer(low).to_owned());
+            *high = Box::new(selection_changer(high).to_owned());
         }
-        Some(Expr::Between { expr, negated, low, high }) => {
-            Some(Expr::Between {
-                expr,
-                negated,
-                low: selection_changer(Some(*low.clone())).map(Box::new).unwrap(),
-                high: selection_changer(Some(*high.clone())).map(Box::new).unwrap(),
-            })
+        Expr::Subquery(query) => {
+            *query = Box::new(matcher(query).to_owned());
         }
-        Some(Expr::Subquery(query)) => {
-            Some(Expr::Subquery(
-                Box::new(matcher(&query))
-            ))
+        Expr::Nested(nested) => {
+            *nested = Box::new(selection_changer(nested).to_owned());
         }
-        Some(Expr::Nested(nested)) => {
-            Some(Expr::Nested(
-                Box::new(selection_changer(Some(*nested)).unwrap())
-            ))
-        }
-        Some(Expr::Function(function)) => {
-            let Function { name, mut args, over, distinct, special, order_by } = function;
-            {
-                if args.len() > 1 {
-                    args = args.drain(0..2).collect();
-                }
+        Expr::Function(function) => {
+            if function.args.len() > 1 {
+                function.args = function.args.drain(0..2).collect();
+            }
 
-
-                for arg in args.iter_mut() {
-                    *arg = match arg {
-                        FunctionArg::Unnamed(f_arg) => {
-                            FunctionArg::Unnamed(match f_arg {
-                                FunctionArgExpr::Expr(f_arg_expr) => {
-                                    FunctionArgExpr::Expr(selection_changer(Some(f_arg_expr.clone())).unwrap())
-                                }
-                                _ => {
-                                    f_arg.clone()
-                                }
-                            })
+            for arg in function.args.iter_mut() {
+                match arg {
+                    FunctionArg::Unnamed(ref mut f_arg) => {
+                        let OtherExpr(f_arg_expr) = f_arg else { panic!("{}", f_arg) };
+                        {
+                            *f_arg_expr = selection_changer(f_arg_expr).to_owned();
                         }
-                        FunctionArg::Named { name, arg } => {
-                            FunctionArg::Named {
-                                name: name.clone(),
-                                arg: match arg {
-                                    FunctionArgExpr::Expr(f_arg_expr) => {
-                                        FunctionArgExpr::Expr(selection_changer(Some(f_arg_expr.clone())).unwrap())
-                                    }
-                                    _ => {
-                                        arg.clone()
-                                    }
-                                },
-                            }
+                    },
+                    FunctionArg::Named { ref mut arg, .. } => {
+                        let OtherExpr(f_arg_expr) = arg else { panic!("{}", arg) };
+                        {
+                            *f_arg_expr = selection_changer(f_arg_expr).to_owned();
                         }
                     }
                 }
-
-
-                Some(Expr::Function(Function {
-                    name,
-                    args,
-                    over,
-                    distinct,
-                    special,
-                    order_by,
-                }))
             }
+
         }
-        _ => {
-            selection
-        }
-    }
+        _ => {}
+    };
+    selection
 }
 
-fn matcher(query: &Query) -> Query {
+fn matcher(query: &mut Query) -> &mut Query {
     debug!("matcher: {:?}", query);
-    let mut query = query.clone();
-    let replaced_body = match &*query.body {
-        SetExpr::Values(values) => {
-            let mut replaced_rows = values.rows.clone();
 
-            for xx in replaced_rows.iter_mut() {
+    match &mut *query.body {
+        SetExpr::Values(values) => {
+            for xx in values.rows.iter_mut() {
                 for yy in xx.iter_mut() {
-                    *yy = selection_changer(Some(yy.clone())).unwrap();
+                    *yy = selection_changer(yy).to_owned();
                 }
             };
 
-            SetExpr::Values(Values { explicit_row: false, rows: replaced_rows })
         }
         SetExpr::Select(select) => {
-            let select = select.clone();
-            SetExpr::Select(Box::new(Select {
-                distinct: select.distinct,
-                top: None,
-                projection: select.projection,
-                into: None,
-                from: select.from,
-                // Add or modify other fields as needed
-                // For example, you can add a WHERE clause as follows:
-                lateral_views: select.lateral_views,
-                selection: selection_changer(select.selection),
-                // ...
-                group_by: select.group_by,
-                cluster_by: select.cluster_by,
-                distribute_by: select.distribute_by,
-                sort_by: select.sort_by,
-                having: None,
-                named_window: select.named_window,
-                qualify: None,
-            }))
+            let Select { selection, .. } = select.as_mut();
+            {
+                if !selection.is_none() {
+                    *selection = Some(selection_changer(selection.as_mut().unwrap()).to_owned());
+                }
+            }
+
+        }
+        _ => ()
+    };
+    if query.offset.is_some() {
+        let Offset { value, .. } = query.offset.as_mut().unwrap();
+        {
+            *value = selection_changer(value).to_owned();
         }
 
-        _ => {
-            *query.body
-        }
-    };
-    let replaced_offset = match query.offset {
-        Some(Offset { value, rows }) => {
-            Some(Offset { value: selection_changer(Some(value)).unwrap(), rows })
-        }
-        _ => {
-            query.offset
-        }
-    };
+    }
 
     for order_by in query.order_by.iter_mut() {
-        *order_by = {
-                OrderByExpr {
-                    expr: selection_changer(Some(order_by.expr.clone())).unwrap(),
-                    asc: order_by.asc,
-                    nulls_first: order_by.nulls_first,
-                }
-
-        }
+        order_by.expr = selection_changer(&mut order_by.expr).to_owned()
     }
 
-
-    Query {
-        with: query.with,
-        body: Box::new(replaced_body),
-        order_by: query.order_by,
-        limit: selection_changer(query.limit),
-        offset: replaced_offset,
-        fetch: query.fetch,
-        locks: query.locks,
+    if query.limit.is_some() {
+        query.limit = Some(selection_changer(query.limit.as_mut().unwrap()).to_owned());
     }
+
+    query
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Debug, Clone)]
 pub struct Replaced {
-    pub statement_type: String,
+    pub statement_type: Command,
     pub statement: Statement
 }
 
 pub fn rec(statement: &mut Statement) -> Replaced {
     debug!("rec: {:?}", statement);
-    let typed;
+    let typed ;
 
     match statement {
         Statement::Query(query) => {
-            *statement = Statement::Query(Box::new(matcher(query)));
-            typed = "query";
-        }
-        Statement::Explain { describe_alias, analyze, verbose, statement: explain_statement, format } => {
+            *query = Box::new(matcher(query).to_owned());
+            typed = Command::Query;
+        },
+        Statement::Explain { statement: explain_statement, .. } => {
+            *explain_statement = Box::new(rec(explain_statement).statement.clone());
+            typed = Command::Explain;
+        },
+        Statement::Insert {  source,.. } => {
+            *source = Box::new(matcher(source).to_owned());
+            typed = Command::Insert;
+        },
+        Statement::Update { selection,assignments, .. } => {
 
-            *statement = Statement::Explain {
-                describe_alias: *describe_alias,
-                analyze: *analyze,
-                verbose: *verbose,
-                statement: Box::new(rec(explain_statement).statement.clone()),
-                format: *format
-            };
-            typed = "explain";
-        }
+            *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
 
-        Statement::Insert { or, into, table_name, columns, overwrite, source, partitioned, after_columns, table, on, returning } => {
+            for assigment in assignments.iter_mut() {
+                assigment.value = selection_changer(&mut assigment.value).to_owned();
+            }
 
-            *statement = Statement::Insert {
-                or: *or,
-                into: *into,
-                table_name: table_name.clone(),
-                columns: columns.to_vec(),
-                overwrite: *overwrite,
-                source: Box::new(matcher(source)),
-                partitioned: partitioned.clone(),
-                after_columns: after_columns.to_vec(),
-                table: *table,
-                on: on.clone(),
-                returning: returning.clone(),
-            };
-            typed = "insert";
-        }
-        Statement::Update { table, assignments, from, selection, returning } => {
-            *statement = Statement::Update {
-                table: table.clone(),
-                assignments: assignments.to_vec(),
-                from: from.clone(),
-                selection: selection_changer(selection.clone()),
-                returning: returning.clone(),
-            };
-            typed = "update";
+            typed = Command::Update;
+        },
+        Statement::Delete { selection, .. } => {
+
+            *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            typed = Command::Delete;
+
         },
         _ => {
-            typed = "other";
+            typed = Command::Other;
         }
     };
     Replaced {
-        statement_type: typed.to_string(),
+        statement_type: typed,
         statement: statement.clone(),
     }
 }
