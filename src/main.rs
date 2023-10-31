@@ -15,6 +15,7 @@ use env_logger::{Builder, Target};
 
 #[allow(unused_imports)]
 use std::io::{self, Read};
+
 use fs_tail::TailedFile;
 use serde_json::Value;
 
@@ -71,16 +72,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             for log_entry in log_entries.log_entries.iter_mut() {
+                                if !name.query {
+                                    log_entry.original_query = "".to_string();
+                                }
                                 match name.output {
                                     Output::File => {
                                         if !log_entry.replaced_query.is_empty() {
-                                            log_entry.original_query = "".to_string();
                                             let _ = File::write(&mut file_write,(serde_json::to_string(&log_entry).unwrap() + "\n").as_bytes());
                                             log_entry.replaced_query = "".to_string();
                                         }
                                     },
                                     Output::Elastic => {
-                                        log_entry.original_query = "".to_string();
                                         collected_data = collect(collected_data, log_entry).await;
                                     }
                                 }

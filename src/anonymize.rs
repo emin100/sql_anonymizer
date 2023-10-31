@@ -134,9 +134,10 @@ pub fn rec(statement: &mut Statement) -> Replaced {
 
             typed = Command::Update;
         },
-        Statement::Delete { selection, .. } => {
+        Statement::Delete { selection, limit, .. } => {
 
             *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            *limit = Some(selection_changer(limit.as_mut().unwrap()).clone());
             typed = Command::Delete;
 
         },

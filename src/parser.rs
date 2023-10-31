@@ -49,7 +49,7 @@ pub fn parse_mysql_log_entry(log_line: &str, mut multilines: MultiLine) -> Multi
 
                 entry.timestamp = parse_timestamp(timestamp).unwrap();
                 entry.command = ast.statement_type;
-                // entry.original_query = sql_query.to_string();
+                entry.original_query = sql_query.to_string();
                 entry.replaced_query = ast.statement.to_string();
                 log_entries.push(entry);
             },
@@ -150,10 +150,7 @@ pub enum Command {
     Update,
     Other,
     Explain,
-    InsertIgnore,
-    Delete,
-    DeleteWithLimit,
-    None
+    Delete
 }
 
 
@@ -200,34 +197,16 @@ fn anonymize_sql(mut sql: String) -> Result<Vec<anonymize::Replaced>, ParserErro
     let dialect = MySqlDialect {};
 
     let cli::Commands::Send(_name) = cli.command;
-    let mut command = Command::None;
     sql =  sql.replace("  "," ");
-    let re = Regex::new(r"LIMIT ([0-9])").unwrap();
 
     if !sql.starts_with('#') {
-        if sql.to_uppercase().contains("INSERT IGNORE INTO") {
-
-            sql = sql.replace("INSERT IGNORE INTO", "INSERT INTO");
-            command = Command::InsertIgnore;
-
-        }
-        if sql.to_uppercase().starts_with("DELETE ") {
-            sql = re.replace(&sql,"").to_string();
-            command = Command::DeleteWithLimit;
-        }
 
         return match Parser::parse_sql(&dialect, sql.as_str()) {
             Ok(mut ast) => {
                 let mut replaced = Vec::new();
                 for statement in ast.iter_mut() {
-                    let mut changed = anonymize::rec(statement);
-                    if command != Command::None {
-                        changed.statement_type = command.to_owned();
-                    }
-                    replaced.push(changed);
+                    replaced.push(anonymize::rec(statement));
                 };
-                // sql = ast[0].to_string();
-                // info!("Modified SQL: {:?}", ast.);
                 Ok(replaced)
             }
             Err(err) => {

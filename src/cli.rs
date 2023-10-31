@@ -48,7 +48,9 @@ pub struct AddArgs {
     #[arg(short='n', long, default_value = "mysql_logs", env = "ELASTIC_INDEX")]
     pub elastic_index_name: Option<String>,
 
-
+    /// Log original query
+    #[arg(short='q', long, default_value = "false")]
+    pub query: bool,
 
 }
 
