@@ -3,23 +3,22 @@ use elasticsearch::http::Url;
 use log::LevelFilter;
 use std::path::PathBuf;
 
-#[derive(Args,Debug)]
+#[derive(Args, Debug)]
 pub struct AddArgs {
-
     /// Elastic host. Env: ELASTIC_HOST
     #[arg(short, long, env = "ELASTIC_HOST", required_if_eq("output", "elastic"))]
     pub elastic_host: Option<Url>,
 
     /// Sets Elastic username.
-    #[arg(short='u', long, env = "ELASTIC_USER", requires = "elastic_password")]
+    #[arg(short = 'u', long, env = "ELASTIC_USER", requires = "elastic_password")]
     pub elastic_user: Option<String>,
 
     /// Sets Elastic password.
-    #[arg(short='p', long, env = "ELASTIC_PASSWORD", requires = "elastic_user")]
+    #[arg(short = 'p', long, env = "ELASTIC_PASSWORD", requires = "elastic_user")]
     pub elastic_password: Option<String>,
 
     /// Sets an output type
-    #[arg(short='t', long, default_value = "file")]
+    #[arg(short = 't', long, default_value = "file")]
     #[clap(value_enum)]
     pub output: Output,
 
@@ -33,33 +32,37 @@ pub struct AddArgs {
     pub input_file: Option<PathBuf>,
 
     /// Sets a output file path
-    #[arg(short = 'o', long, value_name = "FILE", required_if_eq("output", "file"), default_value="output.txt")]
+    #[arg(
+        short = 'o',
+        long,
+        value_name = "FILE",
+        required_if_eq("output", "file"),
+        default_value = "output.txt"
+    )]
     pub output_file: Option<PathBuf>,
 
     /// Sets a push size
-    #[arg(short='s', long, default_value = "1000")]
+    #[arg(short = 's', long, default_value = "1000")]
     pub elastic_push_size: u16,
 
     /// Sets a push seconds
-    #[arg(short='c', long, default_value = "15")]
+    #[arg(short = 'c', long, default_value = "15")]
     pub elastic_push_seconds: u16,
 
     /// Sets Elastic password.
-    #[arg(short='n', long, default_value = "mysql_logs", env = "ELASTIC_INDEX")]
+    #[arg(short = 'n', long, default_value = "mysql_logs", env = "ELASTIC_INDEX")]
     pub elastic_index_name: Option<String>,
 
     /// Log original query
-    #[arg(short='q', long, default_value = "false")]
+    #[arg(short = 'q', long, default_value = "false")]
     pub query: bool,
-
 }
-
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Client {
     /// Turn debugging information on
-    #[arg(short, long, default_value="error", global=true)]
+    #[arg(short, long, default_value = "error", global = true)]
     pub log_level: LevelFilter,
 
     /// Commands
@@ -75,15 +78,14 @@ pub enum Commands {
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum Input {
     Slow,
-    General
+    General,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 pub enum Output {
     File,
-    Elastic
+    Elastic,
 }
-
 
 pub fn cli() -> Client {
     Client::parse()

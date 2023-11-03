@@ -1,24 +1,23 @@
-use std::env;
-use std::net::IpAddr;
+use crate::{anonymize, cli};
 use chrono::{NaiveDateTime, ParseError};
-use log::{error};
+use log::error;
 use regex::Regex;
+use serde::Serialize;
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::parser::{Parser, ParserError};
+use std::env;
+use std::net::IpAddr;
 use uuid::Uuid;
-use crate::{anonymize, cli};
-use serde::Serialize;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct MultiLine {
     pub log_entries: Vec<LogEntry>,
     pub temp_entry: Option<LogEntry>,
     pub multi_line: bool,
-    pub sql: String
+    pub sql: String,
 }
 
 pub fn parse_mysql_log_entry(log_line: &str, mut multilines: MultiLine) -> MultiLine {
-
     let mut parts: Vec<&str> = log_line.split_whitespace().collect();
 
     let new_line = multilines.sql.clone();
@@ -26,33 +25,40 @@ pub fn parse_mysql_log_entry(log_line: &str, mut multilines: MultiLine) -> Multi
     match parse_timestamp(parts[0]) {
         Ok(_) => {
             parts = new_line.split_whitespace().collect();
-            multilines = MultiLine {log_entries: Vec::new(), multi_line: false, sql: log_line.to_string(), temp_entry: None};
-        },
+            multilines = MultiLine {
+                log_entries: Vec::new(),
+                multi_line: false,
+                sql: log_line.to_string(),
+                temp_entry: None,
+            };
+        }
         Err(_) => {
             multilines.multi_line = true;
-            multilines.sql +=  log_line;
+            multilines.sql += log_line;
             parts.truncate(0);
         }
     }
 
     let mut log_entries: Vec<LogEntry> = Vec::new();
 
-    if parts.len() >= 4  {
+    if parts.len() >= 4 {
         let timestamp = parts[0];
         let _id = parts[1];
         let _command = parts[1];
         let sql_query = parts[3..].join(" ");
 
         match anonymize_sql(sql_query.to_string()) {
-            Ok(result) => for ast in result {
-                let mut entry = LogEntry::default();
-
-                entry.timestamp = parse_timestamp(timestamp).unwrap();
-                entry.command = ast.statement_type;
-                entry.original_query = sql_query.to_string();
-                entry.replaced_query = ast.statement.to_string();
-                log_entries.push(entry);
-            },
+            Ok(result) => {
+                for ast in result {
+                    log_entries.push(LogEntry {
+                        timestamp: parse_timestamp(timestamp).unwrap(),
+                        command: ast.statement_type,
+                        original_query: sql_query.to_string(),
+                        replaced_query: ast.statement.to_string(),
+                        ..LogEntry::default()
+                    });
+                }
+            }
             Err(_error) => {
                 // error!("{} - {}", log_line.to_string(),error);
             }
@@ -63,7 +69,10 @@ pub fn parse_mysql_log_entry(log_line: &str, mut multilines: MultiLine) -> Multi
 }
 
 pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> MultiLine {
-    let re = Regex::new(r"^# Time: (.+)$|^# User@Host: (.+)Id:|^# Query_time: (.+)$|^SET timestamp=(.+);$").unwrap();
+    let re = Regex::new(
+        r"^# Time: (.+)$|^# User@Host: (.+)Id:|^# Query_time: (.+)$|^SET timestamp=(.+);$",
+    )
+    .unwrap();
     let mut log_entries: Vec<LogEntry> = Vec::new();
     let mut log_entry = LogEntry::default();
     if multilines.temp_entry.is_some() {
@@ -74,7 +83,6 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
             if multilines.multi_line && log_entry.timestamp != NaiveDateTime::default() {
                 // log_entry[0].original_query = log_line.to_string();
 
-
                 match anonymize_sql(log_entry.original_query.clone()) {
                     Ok(result) => {
                         for ast in result {
@@ -83,16 +91,12 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
                             c_entry.command = ast.statement_type;
                             log_entries.push(c_entry);
                         }
-                    },
-                    Err(_error) => {
-
                     }
+                    Err(_error) => {}
                 }
-
             }
             multilines.multi_line = false;
             log_entry.original_query = "".to_string();
-
 
             log_entry = LogEntry::default();
             log_entry.timestamp = parse_timestamp(match_time.as_str()).unwrap();
@@ -101,12 +105,42 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
             log_entry.user = Some(match_time.as_str().trim().to_string());
         }
         if let Some(match_time) = captures.get(3) {
-            let line_re = Regex::new(r"^(.+)Lock_time:(.+)Rows_sent:(.+)Rows_examined:\s(.+)").unwrap();
+            let line_re =
+                Regex::new(r"^(.+)Lock_time:(.+)Rows_sent:(.+)Rows_examined:\s(.+)").unwrap();
             let parse_info = line_re.captures(match_time.as_str()).unwrap();
-            log_entry.query_time = Some(parse_info.get(1).unwrap().as_str().trim().parse::<f32>().unwrap());
-            log_entry.lock_time = Some(parse_info.get(2).unwrap().as_str().trim().parse::<f32>().unwrap());
-            log_entry.row_sent = Some(parse_info.get(3).unwrap().as_str().trim().parse::<u32>().unwrap());
-            let last_part: Vec<&str> = parse_info.get(4).unwrap().as_str().split_whitespace().collect();
+            log_entry.query_time = Some(
+                parse_info
+                    .get(1)
+                    .unwrap()
+                    .as_str()
+                    .trim()
+                    .parse::<f32>()
+                    .unwrap(),
+            );
+            log_entry.lock_time = Some(
+                parse_info
+                    .get(2)
+                    .unwrap()
+                    .as_str()
+                    .trim()
+                    .parse::<f32>()
+                    .unwrap(),
+            );
+            log_entry.row_sent = Some(
+                parse_info
+                    .get(3)
+                    .unwrap()
+                    .as_str()
+                    .trim()
+                    .parse::<u32>()
+                    .unwrap(),
+            );
+            let last_part: Vec<&str> = parse_info
+                .get(4)
+                .unwrap()
+                .as_str()
+                .split_whitespace()
+                .collect();
             log_entry.row_examined = Some(last_part.first().unwrap().parse::<u32>().unwrap());
         }
 
@@ -117,14 +151,12 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
         multilines.temp_entry = Some(log_entry);
         multilines.log_entries = log_entries;
         multilines
-
     } else {
-        log_entry.original_query += log_line.replace("\t","").as_str();
+        log_entry.original_query += log_line.replace('\t', "").as_str();
         multilines.temp_entry = Some(log_entry);
         multilines
     }
 }
-
 
 #[derive(Debug, Serialize, Clone)]
 pub struct LogEntry {
@@ -140,29 +172,25 @@ pub struct LogEntry {
     pub lock_time: Option<f32>,
     pub row_sent: Option<u32>,
     pub row_examined: Option<u32>,
-
 }
 
-#[derive(Debug, Clone, Serialize,PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum Command {
     Query,
     Insert,
     Update,
     Other,
     Explain,
-    Delete
+    Delete,
 }
-
 
 fn hostname() -> Option<String> {
     match env::var("HOSTNAME") {
         Ok(val) => Some(val),
-        Err(_) => {
-            match hostname::get() {
-                Ok(host) => Some(host.to_string_lossy().into_owned()),
-                Err(_) => None,
-            }
-        }
+        Err(_) => match hostname::get() {
+            Ok(host) => Some(host.to_string_lossy().into_owned()),
+            Err(_) => None,
+        },
     }
 }
 
@@ -190,30 +218,28 @@ pub fn parse_timestamp(timestamp_str: &str) -> Result<NaiveDateTime, ParseError>
     NaiveDateTime::parse_from_str(timestamp_str, format_str)
 }
 
-
-fn anonymize_sql(mut sql: String) -> Result<Vec<anonymize::Replaced>, ParserError> {
+fn anonymize_sql(sql: String) -> Result<Vec<anonymize::Replaced>, ParserError> {
     let cli = cli::cli();
 
     let dialect = MySqlDialect {};
 
     let cli::Commands::Send(_name) = cli.command;
-    sql =  sql.replace("  "," ");
+    // sql = sql.replace("  ", " ");
 
     if !sql.starts_with('#') {
-
         return match Parser::parse_sql(&dialect, sql.as_str()) {
             Ok(mut ast) => {
                 let mut replaced = Vec::new();
                 for statement in ast.iter_mut() {
                     replaced.push(anonymize::rec(statement));
-                };
+                }
                 Ok(replaced)
             }
             Err(err) => {
-                error!("Error parsing sql: {} - {}", err,sql);
+                error!("Error parsing sql: {} - {}", err, sql);
                 Err(err)
             }
-        }
+        };
     }
 
     Ok(Vec::new())

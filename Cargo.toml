@@ -23,31 +23,4 @@ clap_complete = "4.4.4"
 regex = "1.10.2"
 serde = "1.0.189"
 cargo-deb = { version = "2.0.0" }
-
-[build-dependencies]
-clap_mangen = "0.2.15"
-
-
-[package.metadata.deb]
-maintainer = "cargo-deb developers <cargo-deb@example.invalid>"
-copyright = "2017, cargo-deb developers."
-license-file = ["LICENSE", "2"]
-extended-description = "example project for cargo-deb"
-depends = "$auto"
-section = "utils"
-priority = "optional"
-assets = [
-    ["target/release/sql_normalizer", "usr/bin/", "755"],
-]
-default-features = false
-features = ["example_debian_build"]
-
-[package.metadata.deb.variants.debug]
-assets =  [
-    ["target/release/sql_normalizer", "usr/bin/", "755"],
-]
-
-[features]
-default = ["example_non_debian_build"]
-example_non_debian_build = []
-example_debian_build = []
+openssl = { version = "0.10.35", features = ["vendored"] }
