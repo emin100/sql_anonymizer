@@ -20,7 +20,6 @@ use crate::cli::Output;
 use crate::elastic::collect;
 use crate::parser::MultiLine;
 use cli::Commands::Send;
-use std::{thread, time};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -93,7 +92,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                             let _ = File::flush(&mut file_write);
-                            thread::sleep(time::Duration::from_millis(10));
                         }
                     }
                 };
