@@ -130,7 +130,9 @@ pub fn rec(statement: &mut Statement) -> Replaced {
             assignments,
             ..
         } => {
-            *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            if selection.is_some() {
+                *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            }
 
             for assigment in assignments.iter_mut() {
                 assigment.value = selection_changer(&mut assigment.value).to_owned();
@@ -141,7 +143,9 @@ pub fn rec(statement: &mut Statement) -> Replaced {
         Statement::Delete {
             selection, limit, ..
         } => {
-            *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            if selection.is_some() {
+                *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+            }
             if limit.is_some() {
                 *limit = Some(selection_changer(limit.as_mut().unwrap()).clone());
             }

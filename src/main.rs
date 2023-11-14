@@ -58,39 +58,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
 
                         for line in locked.lines() {
-                            match name.input {
-                                cli::Input::General => {
-                                    log_entries =
-                                        parser::parse_mysql_log_entry(&line.unwrap(), log_entries);
+                            match line {
+                                Ok(opened_line) => {
+                                    match name.input {
+                                        cli::Input::General => {
+                                            log_entries =
+                                                parser::parse_mysql_log_entry(&opened_line, log_entries);
+                                        }
+                                        cli::Input::Slow => {
+                                            log_entries = parser::parse_mysql_slow_log_entry(
+                                                &opened_line,
+                                                log_entries,
+                                            );
+                                        }
+                                    }
+
+                                    for log_entry in log_entries.log_entries.iter_mut() {
+                                        if !name.query {
+                                            log_entry.original_query = "".to_string();
+                                        }
+                                        match name.output {
+                                            Output::File => {
+                                                if !log_entry.replaced_query.is_empty() {
+                                                    let _ = File::write(
+                                                        &mut file_write,
+                                                        (serde_json::to_string(&log_entry).unwrap() + "\n")
+                                                            .as_bytes(),
+                                                    );
+                                                    log_entry.replaced_query = "".to_string();
+                                                }
+                                            }
+                                            Output::Elastic => {
+                                                collected_data = collect(collected_data, log_entry).await;
+                                            }
+                                        }
+                                    }
                                 }
-                                cli::Input::Slow => {
-                                    log_entries = parser::parse_mysql_slow_log_entry(
-                                        &line.unwrap(),
-                                        log_entries,
-                                    );
+                                Err(err) => {
+                                    error!("Line error: {}", err.to_string());
                                 }
                             }
 
-                            for log_entry in log_entries.log_entries.iter_mut() {
-                                if !name.query {
-                                    log_entry.original_query = "".to_string();
-                                }
-                                match name.output {
-                                    Output::File => {
-                                        if !log_entry.replaced_query.is_empty() {
-                                            let _ = File::write(
-                                                &mut file_write,
-                                                (serde_json::to_string(&log_entry).unwrap() + "\n")
-                                                    .as_bytes(),
-                                            );
-                                            log_entry.replaced_query = "".to_string();
-                                        }
-                                    }
-                                    Output::Elastic => {
-                                        collected_data = collect(collected_data, log_entry).await;
-                                    }
-                                }
-                            }
                             let _ = File::flush(&mut file_write);
                         }
                     }

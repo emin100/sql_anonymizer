@@ -152,7 +152,7 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
         multilines.log_entries = log_entries;
         multilines
     } else {
-        log_entry.original_query += log_line.replace('\t', "").as_str();
+        log_entry.original_query += log_line.replace('\t', " ").as_str();
         multilines.temp_entry = Some(log_entry);
         multilines
     }
@@ -237,6 +237,7 @@ fn anonymize_sql(sql: String) -> Result<Vec<anonymize::Replaced>, ParserError> {
             }
             Err(err) => {
                 error!("Error parsing sql: {} - {}", err, sql);
+                /*error!("Error parsing sql: {}", err);*/
                 Err(err)
             }
         };
