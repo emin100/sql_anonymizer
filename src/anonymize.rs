@@ -122,7 +122,7 @@ pub fn rec(statement: &mut Statement) -> Replaced {
             typed = Command::Explain;
         }
         Statement::Insert { source, .. } => {
-            *source = Box::new(matcher(source).to_owned());
+            *source = Some(Box::new(matcher(source.to_owned().unwrap().as_mut()).to_owned()));
             typed = Command::Insert;
         }
         Statement::Update {
