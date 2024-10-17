@@ -6,22 +6,23 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sqlparser = "0.40.0"
-log = { version = "0.4.20", features = [] }
-env_logger = "0.10.1"
-clap = { version = "4.4.10", features = ["derive","env"] }
-uuid = {version = "1.6.1", features = [ "v4", "serde" ]}
-chrono = {version = "0.4.31", features = [  "serde" ]}
+sqlparser = "0.46.0"
+log = { version = "0.4.21", features = [] }
+env_logger = "0.11.3"
+clap = { version = "4.5.4", features = ["derive","env"] }
+uuid = {version = "1.8.0", features = [ "v4", "serde" ]}
+chrono = {version = "0.4.38", features = [  "serde" ]}
 fs-tail = "0.1.4"
 elasticsearch = "8.5.0-alpha.1"
-serde_json = "1.0.107"
-tokio = { version = "1.34.0", features = ["rt", "rt-multi-thread", "macros"] }
+serde_json = "1.0.117"
+tokio = { version = "1.37.0", features = ["rt", "rt-multi-thread", "macros"] }
 retry = "2.0.0"
-hostname = "0.3.1"
-local-ip-address = "0.5.6"
-clap_complete = "4.4.4"
-regex = "1.10.2"
-serde = "1.0.193"
-cargo-deb = { version = "2.0.2" }
-openssl = { version = "0.10.60", features = ["vendored"] }
-linemux = "0.3"
+hostname = "0.4.0"
+local-ip-address = "0.6.1"
+clap_complete = "4.5.2"
+regex = "1.10.4"
+serde = "1.0.201"
+cargo-deb = { version = "2.2.0" }
+openssl = { version = "0.10.64", features = ["vendored"] }
+linemux = "0.3.0"
+md5 = "0.7.0"

@@ -1,11 +1,15 @@
 use crate::parser::Command;
 use log::debug;
 use sqlparser::ast::FunctionArgExpr::Expr as OtherExpr;
-use sqlparser::ast::{Expr, FunctionArg, Offset, Query, Select, SetExpr, Statement, Value};
+use sqlparser::ast::{Expr, FunctionArg, FunctionArguments, Offset, Query, Select, SelectItem, SetExpr, Statement, Value};
+use sqlparser::ast::OnInsert::DuplicateKeyUpdate;
 
 fn selection_changer(selection: &mut Expr) -> &mut Expr {
     debug!("Selection Changer: {:?}", selection);
     match selection {
+        Expr::UnaryOp {  expr, .. } => {
+            return selection_changer(expr)
+        }
         Expr::BinaryOp { left, right, .. } => {
             *left = Box::new(selection_changer(left).to_owned());
             *right = Box::new(selection_changer(right).to_owned());
@@ -29,32 +33,46 @@ fn selection_changer(selection: &mut Expr) -> &mut Expr {
         Expr::Nested(nested) => {
             *nested = Box::new(selection_changer(nested).to_owned());
         }
-        Expr::Function(function) => {
-            if function.args.len() > 1 {
-                function.args = function.args.drain(0..2).collect();
+        Expr::Function(function) => match function.args {
+            FunctionArguments::Subquery(ref mut query) => {
+                *query = Box::new(matcher(query).to_owned());
             }
-
-            for arg in function.args.iter_mut() {
-                match arg {
-                    FunctionArg::Unnamed(ref mut f_arg) => {
-                        let OtherExpr(f_arg_expr) = f_arg else {
-                            panic!("{}", f_arg)
-                        };
-                        {
-                            *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+            FunctionArguments::List(ref mut falist) => {
+                for arg in falist.args.iter_mut() {
+                    match arg {
+                        FunctionArg::Unnamed(ref mut f_arg) => {
+                            match f_arg {
+                                OtherExpr(f_arg_expr) => {
+                                    *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+                                }
+                                _ => {}
+                            }
+                            /*let OtherExpr(f_arg_expr) = f_arg else {
+                                panic!("{}", f_arg)
+                            };
+                            {
+                                *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+                            }*/
                         }
-                    }
-                    FunctionArg::Named { ref mut arg, .. } => {
-                        let OtherExpr(f_arg_expr) = arg else {
-                            panic!("{}", arg)
-                        };
-                        {
-                            *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+                        FunctionArg::Named { ref mut arg, .. } => {
+                            match arg {
+                                OtherExpr(f_arg_expr) => {
+                                    *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+                                }
+                                _ => {}
+                            }
+                            /*let OtherExpr(f_arg_expr) = arg else {
+                                panic!("{}", arg)
+                            };
+                            {
+                                *f_arg_expr = selection_changer(f_arg_expr).to_owned();
+                            }*/
                         }
                     }
                 }
             }
-        }
+            FunctionArguments::None => {}
+        },
         _ => {}
     };
     selection
@@ -72,10 +90,26 @@ fn matcher(query: &mut Query) -> &mut Query {
             }
         }
         SetExpr::Select(select) => {
-            let Select { selection, .. } = select.as_mut();
+            let Select { selection, projection, having, .. } = select.as_mut();
             {
+                for p in projection {
+                    match p {
+                        SelectItem::UnnamedExpr(expr) => {
+                            *expr = selection_changer(expr).to_owned();
+                        }
+                        SelectItem::ExprWithAlias { expr, .. } => {
+                            *expr = selection_changer(expr).to_owned();
+                        }
+                        SelectItem::QualifiedWildcard(_, _) => {}
+                        SelectItem::Wildcard(_) => {}
+                    }
+
+                }
                 if !selection.is_none() {
                     *selection = Some(selection_changer(selection.as_mut().unwrap()).to_owned());
+                }
+                if !having.is_none() {
+                    *having = Some(selection_changer(having.as_mut().unwrap()).to_owned());
                 }
             }
         }
@@ -121,8 +155,21 @@ pub fn rec(statement: &mut Statement) -> Replaced {
             *explain_statement = Box::new(rec(explain_statement).statement.clone());
             typed = Command::Explain;
         }
-        Statement::Insert { source, .. } => {
-            *source = Some(Box::new(matcher(source.to_owned().unwrap().as_mut()).to_owned()));
+        Statement::Insert(insert) => {
+            insert.source = Some(Box::new(
+                matcher(insert.source.to_owned().unwrap().as_mut()).to_owned(),
+            ));
+            if insert.on.is_some() {
+                match insert.on.as_mut().unwrap() {
+                    DuplicateKeyUpdate(_0)=> {
+                        for ass in _0.iter_mut() {
+                            ass.value = selection_changer(&mut ass.value.to_owned()).to_owned()
+                        }
+                        _0.to_owned()
+                    },
+                    _ => todo!(),
+                };
+            }
             typed = Command::Insert;
         }
         Statement::Update {
@@ -140,14 +187,13 @@ pub fn rec(statement: &mut Statement) -> Replaced {
 
             typed = Command::Update;
         }
-        Statement::Delete {
-            selection, limit, ..
-        } => {
-            if selection.is_some() {
-                *selection = Some(selection_changer(selection.as_mut().unwrap()).clone());
+        Statement::Delete(delete) => {
+            if delete.selection.is_some() {
+                delete.selection =
+                    Some(selection_changer(delete.selection.as_mut().unwrap()).clone());
             }
-            if limit.is_some() {
-                *limit = Some(selection_changer(limit.as_mut().unwrap()).clone());
+            if delete.limit.is_some() {
+                delete.limit = Some(selection_changer(delete.limit.as_mut().unwrap()).clone());
             }
             typed = Command::Delete;
         }

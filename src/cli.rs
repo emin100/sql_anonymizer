@@ -58,6 +58,37 @@ pub struct AddArgs {
     pub query: bool,
 }
 
+#[derive(Args, Debug)]
+pub struct ReportArgs {
+    /// Sets a input file path
+    #[arg(short = 'f', long, value_name = "FILE", required = true)]
+    pub input_file: Option<PathBuf>,
+
+    /// Sets a output file path
+    #[arg(short = 'o', long, value_name = "FILE", default_value = "output.txt")]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct PFArgs {
+    /// Sets a input file path
+    #[arg(short = 'f', long, value_name = "FILE", required = true)]
+    pub input_file: Option<PathBuf>,
+
+    /// Sets a output file path
+    #[arg(short = 'o', long, value_name = "FILE", default_value = "output.txt")]
+    pub output_file: Option<PathBuf>,
+
+    /// Sets an input type
+    #[arg(short, long, default_value = "general", required = true)]
+    #[clap(value_enum)]
+    pub input: Input,
+
+    /// Sets a start date
+    #[arg(short = 'd', long, default_value_t = 0, required = false)]
+    pub start_date: u16,
+}
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Client {
@@ -72,6 +103,8 @@ pub struct Client {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    Report(ReportArgs),
+    FileParse(PFArgs),
     Send(AddArgs),
 }
 

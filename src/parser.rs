@@ -1,4 +1,4 @@
-use crate::{anonymize, cli};
+use crate::anonymize;
 use chrono::{NaiveDateTime, ParseError};
 use log::error;
 use regex::Regex;
@@ -70,7 +70,7 @@ pub fn parse_mysql_log_entry(log_line: &str, mut multilines: MultiLine) -> Multi
 
 pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> MultiLine {
     let re = Regex::new(
-        r"^# Time: (.+)$|^# User@Host: (.+)Id:|^# Query_time: (.+)$|^SET timestamp=(.+);$",
+        r"^# Time: (.+)$|^# User@Host: (.+)Id:|^# Schema: (.+)$|^# Query_time: (.+)$|^# Bytes_sent: (.+)$|^SET timestamp=(.+);$",
     )
     .unwrap();
     let mut log_entries: Vec<LogEntry> = Vec::new();
@@ -80,6 +80,7 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
     }
     if let Some(captures) = re.captures(log_line) {
         if let Some(match_time) = captures.get(1) {
+            
             if multilines.multi_line && log_entry.timestamp != NaiveDateTime::default() {
                 // log_entry[0].original_query = log_line.to_string();
 
@@ -104,7 +105,7 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
         if let Some(match_time) = captures.get(2) {
             log_entry.user = Some(match_time.as_str().trim().to_string());
         }
-        if let Some(match_time) = captures.get(3) {
+        if let Some(match_time) = captures.get(4) {
             let line_re =
                 Regex::new(r"^(.+)Lock_time:(.+)Rows_sent:(.+)Rows_examined:\s(.+)").unwrap();
             let parse_info = line_re.captures(match_time.as_str()).unwrap();
@@ -144,7 +145,7 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
             log_entry.row_examined = Some(last_part.first().unwrap().parse::<u32>().unwrap());
         }
 
-        if let Some(_match_time) = captures.get(4) {
+        if let Some(_match_time) = captures.get(6) {
             multilines.multi_line = true;
         }
 
@@ -152,7 +153,8 @@ pub fn parse_mysql_slow_log_entry(log_line: &str, mut multilines: MultiLine) -> 
         multilines.log_entries = log_entries;
         multilines
     } else {
-        log_entry.original_query += log_line.replace('\t', " ").as_str();
+        log_entry.original_query +=
+            (log_line.replace(['\t'], " ").to_string() + &String::from(" ")).as_str();
         multilines.temp_entry = Some(log_entry);
         multilines
     }
@@ -219,11 +221,9 @@ pub fn parse_timestamp(timestamp_str: &str) -> Result<NaiveDateTime, ParseError>
 }
 
 fn anonymize_sql(sql: String) -> Result<Vec<anonymize::Replaced>, ParserError> {
-    let cli = cli::cli();
-
     let dialect = MySqlDialect {};
 
-    let cli::Commands::Send(_name) = cli.command;
+    // let cli::Commands::Send(_name) = cli.command else { todo!() };
     // sql = sql.replace("  ", " ");
 
     if !sql.starts_with('#') {

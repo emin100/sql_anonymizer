@@ -14,7 +14,9 @@ use uuid::Uuid;
 pub async fn collect(mut body: Vec<Value>, log_entry: &LogEntry) -> Vec<Value> {
     let _id = Uuid::new_v4();
     let local_time: DateTime<Local> = Local::now();
-    let Send(client) = cli::cli().command;
+    let Send(client) = cli::cli().command else {
+        todo!()
+    };
 
     let datetime_with_timezone = DateTime::<FixedOffset>::from_naive_utc_and_offset(
         log_entry.timestamp,
@@ -56,6 +58,7 @@ async fn elastic_connect() -> Result<Elasticsearch, Box<dyn std::error::Error>> 
 
             Ok(Elasticsearch::new(transport.build()?))
         }
+        _ => Err(format!("Test").into()),
     }
 }
 
@@ -70,7 +73,7 @@ async fn send(body: Vec<serde_json::Value>) -> Result<Response, Box<dyn std::err
     let client = elastic_connect().await?;
     let cli = cli::cli();
 
-    let Send(options) = cli.command;
+    let Send(options) = cli.command else { todo!() };
 
     let response = client
         .bulk(BulkParts::Index(
